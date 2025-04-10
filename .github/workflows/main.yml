@@ -1,9 +1,9 @@
-name: Build and Save Docker Image to TAR
+name: Build and Save Docker Image
 
 on:
   push:
     branches:
-      - main
+      - main 
 
 jobs:
   build:
@@ -16,11 +16,11 @@ jobs:
       - name: Build Docker image for archon-demo-node-app
         run: docker build . -t archon-demo-node-app:latest
 
-      - name: Save Docker image to TAR file 
+      - name: Save Docker image to TAR file
         run: docker save archon-demo-node-app:latest -o archon-demo-node-app.tar
 
-      - name: Upload TAR artifact in root
-        uses: actions/upload-artifact@v3
+      - name: Upload TAR artifact
+        uses: actions/upload-artifact@v3.1.0
         with:
           name: docker-image-tar
           path: archon-demo-node-app.tar
