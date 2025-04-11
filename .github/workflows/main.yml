@@ -26,11 +26,7 @@ jobs:
             build-mode: none
           - language: javascript-typescript
             build-mode: none
-          # Add additional languages as needed:
-          # - language: c-cpp
-          #   build-mode: manual
-          # - language: python
-          #   build-mode: none
+          # Add additional languages as needed.
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -38,22 +34,19 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
-          # Set a writable location for the database.
-          db-location: "${{ github.runner_temp }}/my_codeql_db"
+          # Use a writable directory under the workspace
+          db-location: "${{ github.workspace }}/my_codeql_db"
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
-          # Optionally, add custom queries here.
+          # Optionally, specify custom queries:
           # queries: security-extended,security-and-quality
 
-      # If using manual build mode, add your custom build commands here.
       - if: matrix.build-mode == 'manual'
         name: Run manual build steps
         shell: bash
         run: |
-          echo 'Custom build steps for manual mode go here.'
-          # Example:
-          # make bootstrap
-          # make release
+          echo 'Running manual build steps'
+          # Insert your custom build steps here.
           exit 1
 
       - name: Perform CodeQL Analysis
@@ -61,32 +54,30 @@ jobs:
         with:
           category: "/language:${{ matrix.language }}"
 
-      # Ensure a SARIF file exists so that the upload finds something.
-      - name: Ensure SARIF file exists
+      - name: Export SARIF from CodeQL Database
         if: always()
         run: |
-          if [ ! -f codeql-results.sarif ]; then
-            echo "No SARIF file detected – creating an empty one."
-            echo '{"version": "2.1.0", "runs": []}' > codeql-results.sarif
-          else
-            echo "SARIF file found."
-          fi
+          echo "Exporting CodeQL diagnostics..."
+          codeql database export-diagnostics "${{ github.workspace }}/my_codeql_db" \
+            --format=sarif-latest \
+            --output=codeql-results.sarif \
+            --sarif-include-diagnostics
 
       - name: Upload CodeQL (SAST) Results Artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          # Parameterize the artifact name for uniqueness.
+          # Parameterize artifact name by language to avoid conflicts.
           name: sast-results-${{ matrix.language }}
           path: codeql-results.sarif
 
+      # Optional: Also upload the CodeQL database directory as an artifact.
       - name: Upload CodeQL Database Artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: codeql-database-${{ matrix.language }}
-          # Reference the same writable path used above.
-          path: "${{ github.runner_temp }}/my_codeql_db"
+          path: "${{ github.workspace }}/my_codeql_db"
 
   build:
     name: Build and Save Docker Image
