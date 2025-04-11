@@ -28,7 +28,7 @@ jobs:
             build-mode: none
           # Add additional languages as needed:
           # - language: c-cpp
-          #   build-mode: manual  # for example, if you need a custom build step
+          #   build-mode: manual
           # - language: python
           #   build-mode: none
     steps:
@@ -38,20 +38,20 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
-          # Use double quotes to ensure correct variable substitution.
+          # Set a writable location for the database.
           db-location: "${{ github.runner_temp }}/my_codeql_db"
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
-          # Optionally, you can add custom queries here:
+          # Optionally, add custom queries here.
           # queries: security-extended,security-and-quality
 
-      # If using manual build mode, add your custom build commands below.
+      # If using manual build mode, add your custom build commands here.
       - if: matrix.build-mode == 'manual'
         name: Run manual build steps
         shell: bash
         run: |
           echo 'Custom build steps for manual mode go here.'
-          # For example:
+          # Example:
           # make bootstrap
           # make release
           exit 1
@@ -61,31 +61,31 @@ jobs:
         with:
           category: "/language:${{ matrix.language }}"
 
-      # Ensure a SARIF file exists so the artifact upload step finds something.
+      # Ensure a SARIF file exists so that the upload finds something.
       - name: Ensure SARIF file exists
         if: always()
         run: |
           if [ ! -f codeql-results.sarif ]; then
             echo "No SARIF file detected – creating an empty one."
-            # Minimal valid SARIF structure for an empty result set.
             echo '{"version": "2.1.0", "runs": []}' > codeql-results.sarif
           else
             echo "SARIF file found."
           fi
 
       - name: Upload CodeQL (SAST) Results Artifact
-        if: always()  # Run regardless of previous step outcomes.
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: sast-results
+          # Parameterize the artifact name for uniqueness.
+          name: sast-results-${{ matrix.language }}
           path: codeql-results.sarif
 
       - name: Upload CodeQL Database Artifact
-        if: always()  # Run regardless of previous step outcomes.
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: codeql-database-${{ matrix.language }}
-          # The upload step now references the same directory as specified in db-location.
+          # Reference the same writable path used above.
           path: "${{ github.runner_temp }}/my_codeql_db"
 
   build:
