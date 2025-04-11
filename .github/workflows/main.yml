@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    - cron: '24 5 * * 5'
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    # For Swift, use macOS; for other languages, use Ubuntu.
+    runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
+    permissions:
+      security-events: write  # required for CodeQL
+      packages: read          # to fetch internal or private CodeQL packs
+      actions: read           # (only required for private repositories)
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            build-mode: none
+          - language: javascript-typescript
+            build-mode: none
+          # Add additional languages as needed:
+          # - language: c-cpp
+          #   build-mode: manual  # for example, if you need a custom build step
+          # - language: python
+          #   build-mode: none
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          db-location: '${{ github.runner_temp }}/codeql_db' # edited to have custom db location
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          # Optionally, you can add custom queries here:
+          # queries: security-extended,security-and-quality
+
+      # If using manual build mode, add your custom build commands below.
+      - if: matrix.build-mode == 'manual'
+        name: Run manual build steps
+        shell: bash
+        run: |
+          echo 'Custom build steps for manual mode go here.'
+          # For example:
+          # make bootstrap
+          # make release
+          exit 1
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
+
+      # Verify SARIF file exists so that the artifact upload step finds something.
+      - name: Ensure SARIF file exists
+        if: always()
+        run: |
+          if [ ! -f codeql-results.sarif ]; then
+            echo "No SARIF file detected – creating an empty one."
+            # Minimal valid SARIF structure for an empty result set.
+            echo '{"version": "2.1.0", "runs": []}' > codeql-results.sarif
+          else
+            echo "SARIF file found."
+          fi
+
+      - name: Upload CodeQL (SAST) Results Artifact
+        if: always()  # Ensure the artifact is uploaded even if previous steps fail.
+        uses: actions/upload-artifact@v4
+        with:
+          name: sast-results
+          path: codeql-results.sarif
+
+      - name: Upload CodeQL Database Artifact
+        if: always()  # Run regardless of previous step outcomes.
+        uses: actions/upload-artifact@v4
+        with:
+          name: codeql-database-${{ matrix.language }}
+          path: '${{ github.runner_temp }}/codeql_db'
+
+  build:
+    name: Build and Save Docker Image
+    runs-on: ubuntu-latest
+    # This job depends on the analysis job. Remove or adjust "needs" if you wish to run concurrently.
+    needs: analyze
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker image for archon-demo-node-app
+        run: docker build . -t archon-demo-node-app:latest
+
+      - name: Save Docker image to TAR file
+        run: docker save archon-demo-node-app:latest -o archon-demo-node-app.tar
+
+      - name: Upload TAR artifact
+        uses: actions/upload-artifact@v4.1.0
+        with:
+          name: docker-image-tar
+          path: archon-demo-node-app.tar
