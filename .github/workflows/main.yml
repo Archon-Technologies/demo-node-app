@@ -26,7 +26,11 @@ jobs:
             build-mode: none
           - language: javascript-typescript
             build-mode: none
-          # Add additional languages as needed.
+          # Add additional languages as needed:
+          # - language: c-cpp
+          #   build-mode: manual  # for example, if you need a custom build step
+          # - language: python
+          #   build-mode: none
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -34,50 +38,25 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
-          # Use a writable directory under the workspace
-          db-location: "${{ github.workspace }}/my_codeql_db"
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
-          # Optionally, specify custom queries:
+          # Optionally, you can add custom queries here:
           # queries: security-extended,security-and-quality
 
+      # If using manual build mode, add your custom build commands below.
       - if: matrix.build-mode == 'manual'
-        name: Run manual build steps
         shell: bash
         run: |
-          echo 'Running manual build steps'
-          # Insert your custom build steps here.
+          echo 'Custom build steps for manual mode go here.'
+          # For example:
+          # make bootstrap
+          # make release
           exit 1
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
         with:
           category: "/language:${{ matrix.language }}"
-
-      - name: Export SARIF from CodeQL Database
-        if: always()
-        run: |
-          echo "Exporting CodeQL diagnostics..."
-          codeql database export-diagnostics "${{ github.workspace }}/my_codeql_db" \
-            --format=sarif-latest \
-            --output=codeql-results.sarif \
-            --sarif-include-diagnostics
-
-      - name: Upload CodeQL (SAST) Results Artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          # Parameterize artifact name by language to avoid conflicts.
-          name: sast-results-${{ matrix.language }}
-          path: codeql-results.sarif
-
-      # Optional: Also upload the CodeQL database directory as an artifact.
-      - name: Upload CodeQL Database Artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: codeql-database-${{ matrix.language }}
-          path: "${{ github.workspace }}/my_codeql_db"
 
   build:
     name: Build and Save Docker Image
