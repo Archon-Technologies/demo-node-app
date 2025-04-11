@@ -78,3 +78,5 @@ jobs:
         with:
           name: docker-image-tar
           path: archon-demo-node-app.tar
+      - name: Attest Build Provenance
+        uses: actions/attest-build-provenance@v2.2.3
