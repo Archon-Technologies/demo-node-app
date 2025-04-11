@@ -33,42 +33,21 @@ jobs:
         uses: github/codeql-action/analyze@v3
 
   export_sarif:
-    name: Export SARIF via Code Scanning API
+    name: Export CodeQL SARIF Results
     runs-on: ubuntu-latest
     needs: analyze
     steps:
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Download CodeQL SARIF Results
+        uses: actions/download-artifact@v4
+        with:
+          name: codeql-sarif-results
+          path: sarif-results
 
-      - name: Export SARIF via Code Scanning API
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-        run: |
-          echo "Listing SARIF uploads for repository $REPO..."
-          response=$(curl -s -H "Accept: application/vnd.github+json" \
-                         -H "Authorization: Bearer $GITHUB_TOKEN" \
-                         "https://api.github.com/repos/$REPO/code-scanning/sarifs")
-          echo "$response" | jq .
-          
-          # Get the first SARIF upload's ID. (You might customize which one to use.)
-          sarif_id=$(echo "$response" | jq -r '.[0].id')
-          echo "Using SARIF upload ID: $sarif_id"
-          
-          echo "Downloading SARIF report..."
-          curl -s -H "Accept: application/json" \
-               -H "Authorization: Bearer $GITHUB_TOKEN" \
-               "https://api.github.com/repos/$REPO/code-scanning/sarifs/$sarif_id" \
-               -o codeql-results.sarif
-          
-          echo "Downloaded SARIF file details:"
-          ls -al codeql-results.sarif
-
-      - name: Upload SARIF Artifact
+      - name: Upload Processed SARIF Artifact
         uses: actions/upload-artifact@v4
         with:
           name: codeql-compliance-sarif
-          path: codeql-results.sarif
+          path: sarif-results/*.sarif
 
   build:
     name: Build and Save Docker Image
