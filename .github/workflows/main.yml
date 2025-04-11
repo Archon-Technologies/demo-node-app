@@ -55,12 +55,25 @@ jobs:
           languages: javascript
           tools: latest
 
-      - name: Unzip CodeQL Database
-        run: unzip codeql-database/javascript.zip -d codeql-database-unzipped
-
-      - name: Generate SARIF from Database
+      - name: Find CodeQL Path and Generate SARIF
         run: |
-          /opt/hostedtoolcache/CodeQL/*/x64/codeql/codeql database analyze codeql-database-unzipped \
+          # Find the exact path to the CodeQL executable
+          CODEQL_PATH=$(find /opt/hostedtoolcache/CodeQL -name codeql -type f -executable | head -1)
+          echo "Found CodeQL at: $CODEQL_PATH"
+          
+          # Unzip the database if it's a zip file
+          if [ -f codeql-database/javascript.zip ]; then
+            echo "Unzipping database..."
+            unzip codeql-database/javascript.zip -d codeql-database-unzipped
+            DB_PATH="codeql-database-unzipped"
+          else
+            echo "Using database as is..."
+            DB_PATH="codeql-database"
+          fi
+          
+          # Generate the SARIF file
+          echo "Analyzing database at $DB_PATH..."
+          $CODEQL_PATH database analyze $DB_PATH \
             --format=sarif-latest \
             --output=results.sarif \
             --sarif-category=javascript
