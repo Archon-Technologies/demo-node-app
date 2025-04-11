@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
+        uses: github/codeql-action/init@v3
         with:
           # List the languages you want to analyze. Adjust as needed.
           languages: 'javascript'
