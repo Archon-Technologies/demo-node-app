@@ -38,7 +38,8 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
-          db-location: '${{ github.runner_temp }}/codeql_db' # edited to have custom db location
+          # Use double quotes to ensure correct variable substitution.
+          db-location: "${{ github.runner_temp }}/my_codeql_db"
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
           # Optionally, you can add custom queries here:
@@ -60,7 +61,7 @@ jobs:
         with:
           category: "/language:${{ matrix.language }}"
 
-      # Verify SARIF file exists so that the artifact upload step finds something.
+      # Ensure a SARIF file exists so the artifact upload step finds something.
       - name: Ensure SARIF file exists
         if: always()
         run: |
@@ -73,7 +74,7 @@ jobs:
           fi
 
       - name: Upload CodeQL (SAST) Results Artifact
-        if: always()  # Ensure the artifact is uploaded even if previous steps fail.
+        if: always()  # Run regardless of previous step outcomes.
         uses: actions/upload-artifact@v4
         with:
           name: sast-results
@@ -84,7 +85,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: codeql-database-${{ matrix.language }}
-          path: '${{ github.runner_temp }}/codeql_db'
+          # The upload step now references the same directory as specified in db-location.
+          path: "${{ github.runner_temp }}/my_codeql_db"
 
   build:
     name: Build and Save Docker Image
