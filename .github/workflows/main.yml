@@ -55,9 +55,12 @@ jobs:
           languages: javascript
           tools: latest
 
+      - name: Unzip CodeQL Database
+        run: unzip codeql-database/javascript.zip -d codeql-database-unzipped
+
       - name: Generate SARIF from Database
         run: |
-          codeql database analyze codeql-database \
+          /opt/hostedtoolcache/CodeQL/*/x64/codeql/codeql database analyze codeql-database-unzipped \
             --format=sarif-latest \
             --output=results.sarif \
             --sarif-category=javascript
