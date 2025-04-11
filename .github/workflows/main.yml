@@ -74,7 +74,11 @@ jobs:
   build:
     name: Build and Save Docker Image
     runs-on: ubuntu-latest
-    # This job depends on the analysis job. Remove or adjust "needs" if you wish to run concurrently.
+    # Added a permissions section to allow the job to write to the repository
+    permissions:
+      id-token: write
+      contents: read
+      actions: read
     needs: analyze
     steps:
       - name: Checkout repository
@@ -91,5 +95,6 @@ jobs:
         with:
           name: docker-image-tar
           path: archon-demo-node-app.tar
+      
       - name: Attest Build Provenance
         uses: actions/attest-build-provenance@v2.2.3
