@@ -7,6 +7,12 @@ on:
     branches: [ "main" ]
   schedule:
     - cron: '24 5 * * 5'
+  workflow_dispatch:
+    inputs:
+      override_security_check:
+        description: 'Override security check failures and proceed with build'
+        type: boolean
+        default: false
 
 jobs:
   analyze:
@@ -18,6 +24,9 @@ jobs:
       packages: read          # to fetch internal or private CodeQL packs
       actions: read           # (only required for private repositories)
       contents: read
+      issues: write           # to create issues for security alerts
+    outputs:
+      security_issues_found: ${{ steps.check-alerts.outputs.alerts_found }}
     strategy:
       fail-fast: false
       matrix:
@@ -58,6 +67,51 @@ jobs:
         uses: github/codeql-action/analyze@v3
         with:
           category: "/language:${{ matrix.language }}"
+          output: sarif-results
+
+      # Upload SARIF results but don't fail immediately
+      - name: Upload SARIF results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: sarif-results
+          wait-for-processing: true
+
+      # Check if there are any security alerts
+      - name: Check for security alerts
+        id: check-alerts
+        run: |
+          # Use GitHub CLI to check for code scanning alerts
+          if ! command -v gh &> /dev/null; then
+            echo "Installing GitHub CLI..."
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+            sudo apt update
+            sudo apt install gh
+          fi
+          
+          # Authenticate GitHub CLI using the GITHUB_TOKEN
+          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+          
+          # Check for open code scanning alerts
+          ALERTS=$(gh api repos/${{ github.repository }}/code-scanning/alerts --jq 'length')
+          
+          if [ "$ALERTS" -gt 0 ]; then
+            echo "Security issues found: $ALERTS"
+            echo "alerts_found=true" >> $GITHUB_OUTPUT
+            
+            # Create an issue with the security findings
+            COMMIT_SHA=$(git rev-parse --short HEAD)
+            ISSUE_TITLE="Security Issues Found in Build #${{ github.run_number }}"
+            
+            # Create issue without complex multiline strings
+            gh issue create \
+              --title "$ISSUE_TITLE" \
+              --body "CodeQL analysis found $ALERTS security issues in commit $COMMIT_SHA. Please review the security findings at https://github.com/${{ github.repository }}/security/code-scanning and then manually approve the build if necessary." \
+              --label "security,needs-review"
+          else
+            echo "No security issues found"
+            echo "alerts_found=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Upload CodeQL Database Artifact
         if: always()
@@ -66,11 +120,31 @@ jobs:
           name: codeql-javascript-database
           path: /home/runner/work/_temp/codeql_databases/*.zip
 
+  approval:
+    name: Security Review
+    needs: analyze
+    runs-on: ubuntu-latest
+    if: needs.analyze.outputs.security_issues_found == 'true' && github.event.inputs.override_security_check != 'true'
+    steps:
+      - name: Pending Approval
+        run: |
+          echo "Security issues were found. Manual review and approval is required."
+          echo "To approve, re-run this workflow with the 'Override security check failures and proceed with build' option checked."
+          exit 1
+
   build:
     name: Build and Save Docker Image
     runs-on: ubuntu-latest
-    # This job depends on the analysis job. Remove or adjust "needs" if you wish to run concurrently.
-    needs: analyze
+    # Run build if either:
+    # 1. No security issues were found
+    # 2. Security issues were found but override was approved
+    # 3. This is a manual run with override_security_check=true
+    needs: [analyze, approval]
+    if: |
+      always() && 
+      (needs.analyze.outputs.security_issues_found == 'false' || 
+       github.event.inputs.override_security_check == 'true' ||
+       needs.approval.result == 'skipped')
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
