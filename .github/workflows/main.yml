@@ -67,14 +67,10 @@ jobs:
         uses: github/codeql-action/analyze@v3
         with:
           category: "/language:${{ matrix.language }}"
-          output: sarif-results
+          # Don't output to a file, as we won't use the upload-sarif action
+          # Just let the analyze action do its default upload
 
-      # Upload SARIF results but don't fail immediately
-      - name: Upload SARIF results
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: sarif-results
-          wait-for-processing: true
+      # We're no longer uploading SARIF manually - analyze does this automatically
 
       # Check if there are any security alerts
       - name: Check for security alerts
@@ -117,7 +113,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: codeql-javascript-database
+          name: codeql-${{ matrix.language }}-database
           path: /home/runner/work/_temp/codeql_databases/*.zip
 
   approval:
