@@ -95,6 +95,10 @@ jobs:
             echo "Security issues found: $ALERTS"
             echo "alerts_found=true" >> $GITHUB_OUTPUT
             
+            # Create issue labels if they don't exist
+            gh label create security --color FF0000 --description "Security related issues" || true
+            gh label create needs-review --color FFFF00 --description "Issues needing review" || true
+            
             # Create an issue with the security findings
             COMMIT_SHA=$(git rev-parse --short HEAD)
             ISSUE_TITLE="Security Issues Found in Build #${{ github.run_number }}"
@@ -103,7 +107,7 @@ jobs:
             gh issue create \
               --title "$ISSUE_TITLE" \
               --body "CodeQL analysis found $ALERTS security issues in commit $COMMIT_SHA. Please review the security findings at https://github.com/${{ github.repository }}/security/code-scanning and then manually approve the build if necessary." \
-              --label "security,needs-review"
+              --label "security,needs-review" || echo "Failed to create issue, but continuing workflow"
           else
             echo "No security issues found"
             echo "alerts_found=false" >> $GITHUB_OUTPUT
