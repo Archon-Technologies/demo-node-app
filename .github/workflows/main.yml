@@ -64,7 +64,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sast-results
-          path: /home/runner/work/_temp/codeql_databases/actions.zip
+          path: |
+            /home/runner/work/_temp/codeql_databases/actions.zip
+            **/codeql-results.sarif
 
   build:
     name: Build and Save Docker Image
