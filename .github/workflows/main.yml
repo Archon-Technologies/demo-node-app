@@ -143,6 +143,7 @@ jobs:
     permissions:
       contents: read
       id-token: write  # Required for requesting the JWT
+      attestations: write  # Required for creating attestations
     if: |
       always() && 
       (needs.analyze.outputs.security_issues_found == 'false' || 
