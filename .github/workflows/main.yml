@@ -59,14 +59,12 @@ jobs:
         with:
           category: "/language:${{ matrix.language }}"
 
-      - name: Upload CodeQL (SAST) Results Artifact
-        if: always()  # Ensure the artifact is uploaded even if previous steps fail
+      - name: Upload CodeQL Database Artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: sast-results
-          path: |
-            /home/runner/work/_temp/codeql_databases/actions.zip
-            **/codeql-results.sarif
+          name: codeql-javascript-database
+          path: /home/runner/work/_temp/codeql_databases/*.zip
 
   build:
     name: Build and Save Docker Image
