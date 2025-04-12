@@ -129,7 +129,7 @@ jobs:
       - name: Pending Approval
         run: |
           echo "Security issues were found. Manual review and approval is required."
-          echo "To approve, re-run this workflow with the 'Override security check failures and proceed with build' option checked."
+          echo "To approve, re-run this workflow with the 'Override security check failures and proceed with build' option checked. THIS CODE WILL ENTER AN ENVIRONMENT CONTAINING FEDERAL DATA. SECURITY SETTINGS SHOULD ONLY BE OVERRIDDEN FOR FALSE POSITIVES. OVERRIDING SECURITY CHECKS COULD DIMINISH YOUR ENVIRONMENT'S SECURITY POSTURE."
           exit 1
 
   build:
