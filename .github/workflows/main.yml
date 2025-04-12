@@ -155,11 +155,18 @@ jobs:
       - name: Build Docker image for archon-demo-node-app
         run: docker build . -t archon-demo-node-app:latest
 
+      - name: Get Docker image digest
+        id: image-digest
+        run: |
+          DIGEST=$(docker inspect --format='{{index .Id}}' archon-demo-node-app:latest)
+          echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+          echo "Image digest: $DIGEST"
+
       - name: Attest Build Provenance
         uses: actions/attest-build-provenance@v2.2.3
         with:
           subject-name: archon-demo-node-app
-          subject-digest: $(docker inspect --format='{{index .Id}}' archon-demo-node-app:latest | sed 's/^sha256://')
+          subject-digest: ${{ steps.image-digest.outputs.digest }}
           
       - name: Save Docker image to TAR file
         run: docker save archon-demo-node-app:latest -o archon-demo-node-app.tar
