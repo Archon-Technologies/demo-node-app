@@ -129,7 +129,7 @@ jobs:
       - name: Pending Approval
         run: |
           echo "Security issues were found. Manual review and approval is required."
-          echo "To approve, re-run this workflow with the 'Override security check failures and proceed with build' option checked. THIS CODE WILL ENTER AN ENVIRONMENT CONTAINING FEDERAL DATA. SECURITY SETTINGS SHOULD ONLY BE OVERRIDDEN FOR FALSE POSITIVES. OVERRIDING SECURITY CHECKS COULD DIMINISH YOUR ENVIRONMENT'S SECURITY POSTURE."
+          echo "To approve, re-run this workflow with the 'Override security check failures and proceed with build' option checked."
           exit 1
 
   build:
@@ -140,6 +140,9 @@ jobs:
     # 2. Security issues were found but override was approved
     # 3. This is a manual run with override_security_check=true
     needs: [analyze, approval]
+    permissions:
+      contents: read
+      id-token: write  # Required for requesting the JWT
     if: |
       always() && 
       (needs.analyze.outputs.security_issues_found == 'false' || 
@@ -152,12 +155,6 @@ jobs:
       - name: Build Docker image for archon-demo-node-app
         run: docker build . -t archon-demo-node-app:latest
 
-      - name: Attest Build Provenance
-        uses: actions/attest-build-provenance@v2.2.3
-        with:
-          subject-name: archon-demo-node-app
-          subject-digest: $(docker inspect --format='{{index .Id}}' archon-demo-node-app:latest | sed 's/^sha256://')
-          
       - name: Save Docker image to TAR file
         run: docker save archon-demo-node-app:latest -o archon-demo-node-app.tar
 
