@@ -1,44 +1,124 @@
-name: Build, Sign, and Publish Artifact
+name: CI with Custom OpenSSL Attestation
 
 on:
   push:
-    branches:
-      - main
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    - cron: '24 5 * * 5'
+  workflow_dispatch:
+    inputs:
+      override_security_check:
+        description: 'Override security check failures and proceed with build'
+        type: boolean
+        default: false
 
 jobs:
-  build-sign-upload:
-    runs-on: ubuntu-latest
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
+    permissions:
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+      issues: write
+    outputs:
+      security_issues_found: ${{ steps.check-alerts.outputs.alerts_found }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            build-mode: none
+          - language: javascript-typescript
+            build-mode: none
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup OpenSSL
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      - if: matrix.build-mode == 'manual'
+        name: Run manual build steps
+        shell: bash
         run: |
-          openssl version
+          echo 'Custom build steps for manual mode go here.'
+          exit 1
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
+
+      - name: Check for security alerts
+        id: check-alerts
+        run: |
+          ALERTS=$(gh api repos/${{ github.repository }}/code-scanning/alerts --jq 'length')
+          if [ "$ALERTS" -gt 0 ]; then
+            echo "alerts_found=true" >> $GITHUB_OUTPUT
+          else
+            echo "alerts_found=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload CodeQL Database Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codeql-${{ matrix.language }}-database
+          path: /home/runner/work/_temp/codeql_databases/*.zip
+
+  approval:
+    name: Security Review
+    needs: analyze
+    runs-on: ubuntu-latest
+    if: needs.analyze.outputs.security_issues_found == 'true' && github.event.inputs.override_security_check != 'true'
+    steps:
+      - name: Pending Approval
+        run: |
+          echo "Security issues were found. Manual review and approval is required."
+          exit 1
+
+  build-sign-upload:
+    name: Build, Sign, and Publish Docker Image
+    runs-on: ubuntu-latest
+    needs: [analyze, approval]
+    if: |
+      always() && 
+      (needs.analyze.outputs.security_issues_found == 'false' || 
+       github.event.inputs.override_security_check == 'true' ||
+       needs.approval.result == 'skipped')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Generate RSA Key Pair
         run: |
           openssl genpkey -algorithm RSA -out private_key.pem -pkeyopt rsa_keygen_bits:2048
           openssl rsa -in private_key.pem -pubout -out public_key.pem
 
-      - name: Build artifact (tar.gz)
+      - name: Build Docker image
         run: |
-          tar -czf artifact.tar.gz .
+          docker build . -t archon-demo-node-app:latest
 
-      - name: Sign artifact with private key
+      - name: Save Docker image to TAR file
         run: |
-          openssl dgst -sha256 -sign private_key.pem -out artifact.tar.gz.sig artifact.tar.gz
+          docker save archon-demo-node-app:latest -o archon-demo-node-app.tar
 
-      - name: Upload artifact and signature
+      - name: Sign Docker TAR file
+        run: |
+          openssl dgst -sha256 -sign private_key.pem -out archon-demo-node-app.tar.sig archon-demo-node-app.tar
+
+      - name: Upload artifacts (TAR, signature, public key)
         uses: actions/upload-artifact@v4
         with:
-          name: artifact-package
+          name: docker-image-package
           path: |
-            artifact.tar.gz
-            artifact.tar.gz.sig
-
-      - name: Upload public key for Jenkins
-        uses: actions/upload-artifact@v4
-        with:
-          name: public-key
-          path: public_key.pem
+            archon-demo-node-app.tar
+            archon-demo-node-app.tar.sig
+            public_key.pem
