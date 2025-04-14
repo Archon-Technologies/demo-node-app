@@ -62,7 +62,6 @@ jobs:
           # make bootstrap
           # make release
           exit 1
-
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
         with:
@@ -112,7 +111,6 @@ jobs:
             echo "No security issues found"
             echo "alerts_found=false" >> $GITHUB_OUTPUT
           fi
-
       - name: Upload CodeQL Database Artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -131,7 +129,6 @@ jobs:
           echo "Security issues were found. Manual review and approval is required."
           echo "To approve, re-run this workflow with the 'Override security check failures and proceed with build' option checked."
           exit 1
-
   build:
     name: Build and Save Docker Image
     runs-on: ubuntu-latest
@@ -156,22 +153,23 @@ jobs:
       - name: Build Docker image for archon-demo-node-app
         run: docker build . -t archon-demo-node-app:latest
 
-      - name: Get Docker image digest
-        id: image-digest
-        run: |
-          DIGEST=$(docker inspect --format='{{index .Id}}' archon-demo-node-app:latest)
-          echo "digest=$DIGEST" >> $GITHUB_OUTPUT
-          echo "Image digest: $DIGEST"
-
-      - name: Attest Build Provenance
-        uses: actions/attest-build-provenance@v2.2.3
-        with:
-          subject-name: archon-demo-node-app
-          subject-digest: ${{ steps.image-digest.outputs.digest }}
-          
       - name: Save Docker image to TAR file
         run: docker save archon-demo-node-app:latest -o archon-demo-node-app.tar
 
+      - name: Get TAR file hash
+        id: tar-hash
+        run: |
+          # Calculate SHA256 hash of the TAR file
+          TAR_HASH=$(sha256sum archon-demo-node-app.tar | awk '{print $1}')
+          echo "hash=sha256:$TAR_HASH" >> $GITHUB_OUTPUT
+          echo "TAR file hash: sha256:$TAR_HASH"
+
+      - name: Attest Build Provenance for TAR file
+        uses: actions/attest-build-provenance@v2.2.3
+        with:
+          subject-name: archon-demo-node-app.tar
+          subject-digest: ${{ steps.tar-hash.outputs.hash }}
+          
       - name: Upload TAR artifact
         uses: actions/upload-artifact@v4.1.0
         with:
