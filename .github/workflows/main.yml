@@ -1,177 +1,44 @@
-name: CI
+name: Build, Sign, and Publish Artifact
 
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-  schedule:
-    - cron: '24 5 * * 5'
-  workflow_dispatch:
-    inputs:
-      override_security_check:
-        description: 'Override security check failures and proceed with build'
-        type: boolean
-        default: false
+    branches:
+      - main
 
 jobs:
-  analyze:
-    name: Analyze (${{ matrix.language }})
-    # For Swift, use macOS; for other languages, use Ubuntu.
-    runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
-    permissions:
-      security-events: write  # required for CodeQL
-      packages: read          # to fetch internal or private CodeQL packs
-      actions: read           # (only required for private repositories)
-      contents: read
-      issues: write           # to create issues for security alerts
-    outputs:
-      security_issues_found: ${{ steps.check-alerts.outputs.alerts_found }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - language: actions
-            build-mode: none
-          - language: javascript-typescript
-            build-mode: none
-          # Add additional languages as needed:
-          # - language: c-cpp
-          #   build-mode: manual  # for example, if you need a custom build step
-          # - language: python
-          #   build-mode: none
+  build-sign-upload:
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: ${{ matrix.language }}
-          build-mode: ${{ matrix.build-mode }}
-          # Optionally, you can add custom queries here:
-          # queries: security-extended,security-and-quality
-
-      # If using manual build mode, add your custom build commands below.
-      - if: matrix.build-mode == 'manual'
-        name: Run manual build steps
-        shell: bash
+      - name: Setup OpenSSL
         run: |
-          echo 'Custom build steps for manual mode go here.'
-          # For example:
-          # make bootstrap
-          # make release
-          exit 1
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
-        with:
-          category: "/language:${{ matrix.language }}"
-          # Don't output to a file, as we won't use the upload-sarif action
-          # Just let the analyze action do its default upload
+          openssl version
 
-      # We're no longer uploading SARIF manually - analyze does this automatically
-
-      # Check if there are any security alerts
-      - name: Check for security alerts
-        id: check-alerts
+      - name: Generate RSA Key Pair
         run: |
-          # Use GitHub CLI to check for code scanning alerts
-          if ! command -v gh &> /dev/null; then
-            echo "Installing GitHub CLI..."
-            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
-            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-            sudo apt update
-            sudo apt install gh
-          fi
-          
-          # Authenticate GitHub CLI using the GITHUB_TOKEN
-          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
-          
-          # Check for open code scanning alerts
-          ALERTS=$(gh api repos/${{ github.repository }}/code-scanning/alerts --jq 'length')
-          
-          if [ "$ALERTS" -gt 0 ]; then
-            echo "Security issues found: $ALERTS"
-            echo "alerts_found=true" >> $GITHUB_OUTPUT
-            
-            # Create issue labels if they don't exist
-            gh label create security --color FF0000 --description "Security related issues" || true
-            gh label create needs-review --color FFFF00 --description "Issues needing review" || true
-            
-            # Create an issue with the security findings
-            COMMIT_SHA=$(git rev-parse --short HEAD)
-            ISSUE_TITLE="Security Issues Found in Build #${{ github.run_number }}"
-            
-            # Create issue without complex multiline strings
-            gh issue create \
-              --title "$ISSUE_TITLE" \
-              --body "CodeQL analysis found $ALERTS security issues in commit $COMMIT_SHA. Please review the security findings at https://github.com/${{ github.repository }}/security/code-scanning and then manually approve the build if necessary." \
-              --label "security,needs-review" || echo "Failed to create issue, but continuing workflow"
-          else
-            echo "No security issues found"
-            echo "alerts_found=false" >> $GITHUB_OUTPUT
-          fi
-      - name: Upload CodeQL Database Artifact
-        if: always()
+          openssl genpkey -algorithm RSA -out private_key.pem -pkeyopt rsa_keygen_bits:2048
+          openssl rsa -in private_key.pem -pubout -out public_key.pem
+
+      - name: Build artifact (tar.gz)
+        run: |
+          tar -czf artifact.tar.gz .
+
+      - name: Sign artifact with private key
+        run: |
+          openssl dgst -sha256 -sign private_key.pem -out artifact.tar.gz.sig artifact.tar.gz
+
+      - name: Upload artifact and signature
         uses: actions/upload-artifact@v4
         with:
-          name: codeql-${{ matrix.language }}-database
-          path: /home/runner/work/_temp/codeql_databases/*.zip
+          name: artifact-package
+          path: |
+            artifact.tar.gz
+            artifact.tar.gz.sig
 
-  approval:
-    name: Security Review
-    needs: analyze
-    runs-on: ubuntu-latest
-    if: needs.analyze.outputs.security_issues_found == 'true' && github.event.inputs.override_security_check != 'true'
-    steps:
-      - name: Pending Approval
-        run: |
-          echo "Security issues were found. Manual review and approval is required."
-          echo "To approve, re-run this workflow with the 'Override security check failures and proceed with build' option checked."
-          exit 1
-  build:
-    name: Build and Save Docker Image
-    runs-on: ubuntu-latest
-    # Run build if either:
-    # 1. No security issues were found
-    # 2. Security issues were found but override was approved
-    # 3. This is a manual run with override_security_check=true
-    needs: [analyze, approval]
-    permissions:
-      contents: read
-      id-token: write  # Required for requesting the JWT
-      attestations: write  # Required for creating attestations
-    if: |
-      always() && 
-      (needs.analyze.outputs.security_issues_found == 'false' || 
-       github.event.inputs.override_security_check == 'true' ||
-       needs.approval.result == 'skipped')
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Build Docker image for archon-demo-node-app
-        run: docker build . -t archon-demo-node-app:latest
-
-      - name: Save Docker image to TAR file
-        run: docker save archon-demo-node-app:latest -o archon-demo-node-app.tar
-
-      - name: Get TAR file hash
-        id: tar-hash
-        run: |
-          # Calculate SHA256 hash of the TAR file
-          TAR_HASH=$(sha256sum archon-demo-node-app.tar | awk '{print $1}')
-          echo "hash=sha256:$TAR_HASH" >> $GITHUB_OUTPUT
-          echo "TAR file hash: sha256:$TAR_HASH"
-
-      - name: Attest Build Provenance for TAR file
-        uses: actions/attest-build-provenance@v2.2.3
+      - name: Upload public key for Jenkins
+        uses: actions/upload-artifact@v4
         with:
-          subject-name: archon-demo-node-app.tar
-          subject-digest: ${{ steps.tar-hash.outputs.hash }}
-          
-      - name: Upload TAR artifact
-        uses: actions/upload-artifact@v4.1.0
-        with:
-          name: docker-image-tar
-          path: archon-demo-node-app.tar
+          name: public-key
+          path: public_key.pem
