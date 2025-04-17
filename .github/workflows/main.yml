@@ -138,8 +138,8 @@ jobs:
     if: |
       always() && 
       (needs.analyze.outputs.security_issues_found == 'false' || 
-       github.event.inputs.override_security_check == 'true' ||
-       needs.approval.result == 'skipped')
+      github.event.inputs.override_security_check == 'true' ||
+      needs.approval.result == 'skipped')
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -151,21 +151,30 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
           
+      - name: Set up Docker image name (lowercase)
+        id: image-name
+        run: |
+          REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "REPO_OWNER=$REPO_OWNER" >> $GITHUB_ENV
+        
       - name: Build Docker image
         run: docker build . -t archon-demo-node-app:latest
         
       - name: Tag Docker image for GHCR
-        run: docker tag archon-demo-node-app:latest ghcr.io/${{ github.repository_owner }}/archon-demo-node-app:latest
+        run: docker tag archon-demo-node-app:latest ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
         
       - name: Push to GitHub Container Registry
-        run: docker push ghcr.io/${{ github.repository_owner }}/archon-demo-node-app:latest
+        run: docker push ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
         
       - name: Install cosign
         uses: sigstore/cosign-installer@v3.8.1
       
       - name: Sign Docker image with private key
         run: |
-          cosign sign --yes --key env://COSIGN_PRIVATE_KEY ghcr.io/${{ github.repository_owner }}/archon-demo-node-app:latest
+          cosign sign --yes --key env://COSIGN_PRIVATE_KEY ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
         env:
           COSIGN_PRIVATE_KEY: ${{ secrets.PRIVATE_KEY_PEM }}
           
+      - name: Sign Docker image with GitHub OIDC Token
+        run: |
+          cosign sign --yes ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
