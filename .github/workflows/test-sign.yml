@@ -57,19 +57,26 @@ jobs:
       - name: Push to GitHub Container Registry
         run: docker push ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
         
-      - name: Install cosign
-        uses: sigstore/cosign-installer@v3.8.1
-        
       - name: Write cosign key
         run: |
           echo "${{ secrets.PRIVATE_KEY_PEM }}" > cosign.key
       
-      - name: Sign with a password‑less key
-        # explicitly tell Cosign there is no password
+      - name: Decrypt cosign key
+        env:
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
         run: |
-          COSIGN_PASSWORD="" \
-            cosign sign --key cosign.key \
-            ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
+          # This removes the AES‑256 encryption from your PKCS#8 key:
+          openssl pkcs8 \
+            -inform PEM \
+            -in cosign.key \
+            -passin pass:$COSIGN_PASSWORD \
+            -nocrypt \
+            -out cosign.plain.key
+      
+      - name: Sign image
+        run: |
+          cosign sign --key cosign.plain.key \
+      ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
     
       - name: Sign Docker image with GitHub OIDC Token
         run: |
