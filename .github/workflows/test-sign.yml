@@ -76,7 +76,7 @@ jobs:
       - name: Sign image
         run: |
           cosign sign --key cosign.plain.key \
-      ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
+          ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
     
       - name: Sign Docker image with GitHub OIDC Token
         run: |
