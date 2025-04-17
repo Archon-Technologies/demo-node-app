@@ -15,69 +15,44 @@ on:
         default: false
 
 jobs:
-  build:
-    name: Build and Save Docker Image
+  sign:
     runs-on: ubuntu-latest
-    # Run build if either:
-    # 1. No security issues were found
-    # 2. Security issues were found but override was approved
-    # 3. This is a manual run with override_security_check=true
-    permissions:
-      contents: read
-      id-token: write  # Required for requesting the JWT
-      packages: write  # Required for pushing to GHCR
-    if: |
-      always() && 
-      (needs.analyze.outputs.security_issues_found == 'false' || 
-      github.event.inputs.override_security_check == 'true' ||
-      needs.approval.result == 'skipped')
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
-        
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3.3.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-          
-      - name: Set up Docker image name (lowercase)
-        id: image-name
+
+      # 1) Dump the secret into cosign.key *without* echo‑mangling
+      - name: Write encrypted key
         run: |
-          REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          echo "REPO_OWNER=$REPO_OWNER" >> $GITHUB_ENV
-        
-      - name: Build Docker image
-        run: docker build . -t archon-demo-node-app:latest
-        
-      - name: Tag Docker image for GHCR
-        run: docker tag archon-demo-node-app:latest ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
-        
-      - name: Push to GitHub Container Registry
-        run: docker push ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
-        
-      - name: Write cosign key
+          printf '%s\n' "${{ secrets.PRIVATE_KEY_PEM }}" > cosign.key
+
+      # [Optional] debug: inspect the header so you can see exactly what landed
+      - name: Preview cosign.key header
         run: |
-          echo "${{ secrets.PRIVATE_KEY_PEM }}" > cosign.key
-      
-      - name: Decrypt cosign key
+          echo "---- cosign.key top 3 lines ----"
+          head -n3 cosign.key | sed -e 's/$/↵/' 
+          echo "--------------------------------"
+
+      # 2) Strip off AES‑256 encryption into a plain PKCS#8 file
+      - name: Decrypt cosign.key
         env:
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
         run: |
-          # This removes the AES‑256 encryption from your PKCS#8 key:
           openssl pkcs8 \
             -inform PEM \
             -in cosign.key \
-            -passin pass:$COSIGN_PASSWORD \
+            -passin pass:"$COSIGN_PASSWORD" \
             -nocrypt \
             -out cosign.plain.key
-      
+
+      # [Optional] debug: verify it’s now an unencrypted P‑256 key
+      - name: Inspect decrypted key
+        run: |
+          openssl pkey -in cosign.plain.key -text -noout
+
+      # 3) Sign the image
       - name: Sign image
         run: |
-          cosign sign --key cosign.plain.key \
-          ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
-    
-      - name: Sign Docker image with GitHub OIDC Token
-        run: |
-          cosign sign --yes ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
+          cosign sign \
+            --key cosign.plain.key \
+            ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
