@@ -60,12 +60,12 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@v3.8.1
       
-      - name: Generate cosign key
+      - name: Write cosign key
         run: |
-          echo "${{ secrets.COSIGN_PASSWORD }}" | cosign generate-key-pair
+          echo "${{ secrets.PRIVATE_KEY_PEM }}" > cosign.key
       - name: Sign image
         env:
-          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+          COSIGN_PASSWORD: "${{ secrets.COSIGN_PASSWORD }}"
         run: |
           cosign sign --key cosign.key ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
     
