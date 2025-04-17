@@ -174,7 +174,7 @@ jobs:
           echo "${{ secrets.PRIVATE_KEY_PEM }}" > cosign.key
       - name: Sign image
         run: |
-          echo "${{ secrets.COSIGN_PASSWORD }}" | cosign sign --key cosign.key --yes ...
+          echo "${{ secrets.COSIGN_PASSWORD }}" | cosign sign --key cosign.key --key-pass --yes ...
           
       - name: Sign Docker image with GitHub OIDC Token
         run: |
