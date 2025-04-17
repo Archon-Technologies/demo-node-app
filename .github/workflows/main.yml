@@ -17,14 +17,13 @@ on:
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    # For Swift, use macOS; for other languages, use Ubuntu.
     runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
     permissions:
-      security-events: write  # required for CodeQL
-      packages: read          # to fetch internal or private CodeQL packs
-      actions: read           # (only required for private repositories)
+      security-events: write
+      packages: read
+      actions: read
       contents: read
-      issues: write           # to create issues for security alerts
+      issues: write
     outputs:
       security_issues_found: ${{ steps.check-alerts.outputs.alerts_found }}
     strategy:
@@ -44,66 +43,45 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
-          # Optionally, you can add custom queries here:
-          # queries: security-extended,security-and-quality
 
-      # If using manual build mode, add your custom build commands below.
       - if: matrix.build-mode == 'manual'
         name: Run manual build steps
-        shell: bash
         run: |
           echo 'Custom build steps for manual mode go here.'
-          # For example:
-          # make bootstrap
-          # make release
           exit 1
+
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
         with:
           category: "/language:${{ matrix.language }}"
-          # Don't output to a file, as we won't use the upload-sarif action
-          # Just let the analyze action do its default upload
 
-      # Check if there are any security alerts
       - name: Check for security alerts
         id: check-alerts
         run: |
-          # Use GitHub CLI to check for code scanning alerts
+          # Install and authenticate GitHub CLI
           if ! command -v gh &> /dev/null; then
-            echo "Installing GitHub CLI..."
-            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
-            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-            sudo apt update
-            sudo apt install gh
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+              | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+              | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+            sudo apt update && sudo apt install -y gh
           fi
-          
-          # Authenticate GitHub CLI using the GITHUB_TOKEN
           echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
-          
-          # Check for open code scanning alerts
           ALERTS=$(gh api repos/${{ github.repository }}/code-scanning/alerts --jq 'length')
-          
           if [ "$ALERTS" -gt 0 ]; then
-            echo "Security issues found: $ALERTS"
             echo "alerts_found=true" >> $GITHUB_OUTPUT
-            
-            # Create issue labels if they don't exist
             gh label create security --color FF0000 --description "Security related issues" || true
             gh label create needs-review --color FFFF00 --description "Issues needing review" || true
-            
-            # Create an issue with the security findings
             COMMIT_SHA=$(git rev-parse --short HEAD)
             ISSUE_TITLE="Security Issues Found in Build #${{ github.run_number }}"
-            
-            # Create issue without complex multiline strings
             gh issue create \
               --title "$ISSUE_TITLE" \
-              --body "CodeQL analysis found $ALERTS security issues in commit $COMMIT_SHA. Please review the security findings at https://github.com/${{ github.repository }}/security/code-scanning and then manually approve the build if necessary." \
-              --label "security,needs-review" || echo "Failed to create issue, but continuing workflow"
+              --body "CodeQL analysis found $ALERTS security issues in commit $COMMIT_SHA. Review: https://github.com/${{ github.repository }}/security/code-scanning" \
+              --label "security,needs-review" || true
           else
-            echo "No security issues found"
             echo "alerts_found=false" >> $GITHUB_OUTPUT
           fi
+
       - name: Upload CodeQL Database Artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -119,63 +97,68 @@ jobs:
     steps:
       - name: Pending Approval
         run: |
-          echo "Security issues were found. Manual review and approval is required."
-          echo "To approve, re-run this workflow with the 'Override security check failures and proceed with build' option checked."
+          echo "Security issues were found. Manual review required."
+          echo "Re-run this workflow with 'Override security check failures' to proceed."
           exit 1
-  
+
   build:
     name: Build and Save Docker Image
-    runs-on: ubuntu-latest
-    # Run build if either:
-    # 1. No security issues were found
-    # 2. Security issues were found but override was approved
-    # 3. This is a manual run with override_security_check=true
     needs: [analyze, approval]
+    runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write  # Required for requesting the JWT
-      packages: write  # Required for pushing to GHCR
+      id-token: write
+      packages: write
     if: |
-      always() && 
-      (needs.analyze.outputs.security_issues_found == 'false' || 
-      github.event.inputs.override_security_check == 'true' ||
-      needs.approval.result == 'skipped')
+      always() &&
+      (needs.analyze.outputs.security_issues_found == 'false' ||
+       github.event.inputs.override_security_check == 'true' ||
+       needs.approval.result == 'skipped')
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        
-      - name: Login to GitHub Container Registry
+
+      - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3.3.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-          
+
       - name: Set up Docker image name (lowercase)
         id: image-name
         run: |
           REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           echo "REPO_OWNER=$REPO_OWNER" >> $GITHUB_ENV
-        
+
       - name: Build Docker image
         run: docker build . -t archon-demo-node-app:latest
-        
+
       - name: Tag Docker image for GHCR
-        run: docker tag archon-demo-node-app:latest ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
-        
+        run: |
+          docker tag archon-demo-node-app:latest \
+            ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
+
       - name: Push to GitHub Container Registry
-        run: docker push ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
-        
+        run: |
+          docker push ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
+
+      # ——— Cosign signing steps ———
       - name: Install cosign
         uses: sigstore/cosign-installer@v3.8.1
-      
-      - name: Write cosign key
+
+      - name: Write Cosign private key
         run: |
-          echo "${{ secrets.PRIVATE_KEY_PEM }}" > cosign.key
-      - name: Sign image
+          echo "${{ secrets.PRIVATE_KEY_PEM }}" > opensslrsakey.pem
+          chmod 600 opensslrsakey.pem
+
+      - name: Import key‑pair for Cosign
         run: |
-          cosign sign --key cosign.key --yes ...
-          
-      - name: Sign Docker image with GitHub OIDC Token
+          cosign import-key-pair --key opensslrsakey.pem
+
+      - name: Sign image with Cosign
         run: |
-          cosign sign --yes ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
+           cosign sign \
+                --key import-cosign.key \
+                --yes \
+                ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
