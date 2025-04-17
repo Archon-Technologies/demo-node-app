@@ -157,11 +157,8 @@ jobs:
           cosign import-key-pair --key opensslrsakey.pem
 
       - name: Sign image with Cosign
-        env:
-          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
         run: |
-          echo "$COSIGN_PASSWORD" \
-            | cosign sign \
+           cosign sign \
                 --key import-cosign.key \
                 --yes \
                 ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
