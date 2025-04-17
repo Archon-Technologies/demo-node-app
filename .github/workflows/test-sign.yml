@@ -62,7 +62,7 @@ jobs:
         
       - name: Write cosign key
         run: |
-          echo "${{ secrets.COSIGN_PRIVATE_KEY }}" > cosign.key
+          echo "${{ secrets.PRIVATE_KEY_PEM }}" > cosign.key
       
       - name: Sign with a password‑less key
         # explicitly tell Cosign there is no password
