@@ -158,6 +158,7 @@ jobs:
 
       - name: Sign image with Cosign
         run: |
+           echo ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
            cosign sign \
                 --key import-cosign.key \
                 --yes \
