@@ -1,4 +1,4 @@
-name: Build, Sign, and Push
+name: Test sigstore
 
 on:
   push:
@@ -60,15 +60,15 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@v3.8.1
       
-      - name: Write cosign key
+      - name: Generate cosign key
         run: |
-          echo "${{ secrets.PRIVATE_KEY_PEM }}" > cosign.key
+          echo "${{ secrets.COSIGN_PASSWORD }}" | cosign generate-key-pair
       - name: Sign image
         env:
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
         run: |
           cosign sign --key cosign.key ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
-          
+    
       - name: Sign Docker image with GitHub OIDC Token
         run: |
           cosign sign --yes ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
