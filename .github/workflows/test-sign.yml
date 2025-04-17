@@ -59,15 +59,17 @@ jobs:
         
       - name: Install cosign
         uses: sigstore/cosign-installer@v3.8.1
-      
+        
       - name: Write cosign key
         run: |
-          echo "${{ secrets.PRIVATE_KEY_PEM }}" > cosign.key
-      - name: Sign image
-        env:
-          COSIGN_PASSWORD: "${{ secrets.COSIGN_PASSWORD }}"
+          echo "${{ secrets.COSIGN_PRIVATE_KEY }}" > cosign.key
+      
+      - name: Sign with a password‑less key
+        # explicitly tell Cosign there is no password
         run: |
-          cosign sign --key cosign.key ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
+          COSIGN_PASSWORD="" \
+            cosign sign --key cosign.key \
+            ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
     
       - name: Sign Docker image with GitHub OIDC Token
         run: |
