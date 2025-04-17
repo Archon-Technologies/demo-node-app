@@ -149,12 +149,12 @@ jobs:
 
       - name: Write Cosign private key
         run: |
-          echo "${{ secrets.PRIVATE_KEY_PEM }}" > private.pem
-          chmod 600 private.pem
+          echo "${{ secrets.PRIVATE_KEY_PEM }}" > opensslrsakey.pem
+          chmod 600 opensslrsakey.pem
 
       - name: Import key‑pair for Cosign
         run: |
-          cosign import-key-pair --key private.pem
+          cosign import-key-pair --key opensslrsakey.pem
 
       - name: Sign image with Cosign
         env:
