@@ -21,17 +21,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 1) Dump the secret into cosign.key *without* echo‑mangling
       - name: Write encrypted key
         run: |
           printf '%s\n' "${{ secrets.PRIVATE_KEY_PEM }}" > cosign.key
-
-      # [Optional] debug: inspect the header so you can see exactly what landed
-      - name: Preview cosign.key header
+      
+      - name: Debug show cosign.key contents
         run: |
-          echo "---- cosign.key top 3 lines ----"
-          head -n3 cosign.key | sed -e 's/$/↵/' 
-          echo "--------------------------------"
+          echo "## cosign.key (first 5 lines) ##"
+          head -n5 cosign.key | sed -e 's/$/↵/'   # ↵ makes line endings visible
+          echo "## total lines: ##"
+          wc -l cosign.key
 
       # 2) Strip off AES‑256 encryption into a plain PKCS#8 file
       - name: Decrypt cosign.key
