@@ -1,0 +1,72 @@
+name: Build, Sign, and Push
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    - cron: '24 5 * * 5'
+  workflow_dispatch:
+    inputs:
+      override_security_check:
+        description: 'Override security check failures and proceed with build'
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    name: Build and Save Docker Image
+    runs-on: ubuntu-latest
+    # Run build if either:
+    # 1. No security issues were found
+    # 2. Security issues were found but override was approved
+    # 3. This is a manual run with override_security_check=true
+    permissions:
+      contents: read
+      id-token: write  # Required for requesting the JWT
+      packages: write  # Required for pushing to GHCR
+    if: |
+      always() && 
+      (needs.analyze.outputs.security_issues_found == 'false' || 
+      github.event.inputs.override_security_check == 'true' ||
+      needs.approval.result == 'skipped')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3.3.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Set up Docker image name (lowercase)
+        id: image-name
+        run: |
+          REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "REPO_OWNER=$REPO_OWNER" >> $GITHUB_ENV
+        
+      - name: Build Docker image
+        run: docker build . -t archon-demo-node-app:latest
+        
+      - name: Tag Docker image for GHCR
+        run: docker tag archon-demo-node-app:latest ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
+        
+      - name: Push to GitHub Container Registry
+        run: docker push ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
+        
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3.8.1
+      
+      - name: Write cosign key
+        run: |
+          echo "${{ secrets.PRIVATE_KEY_PEM }}" > cosign.key
+      - name: Sign image
+        run: |
+          echo "${{ secrets.COSIGN_PASSWORD }}" | cosign sign --key cosign.key --key-pass --yes ...
+          
+      - name: Sign Docker image with GitHub OIDC Token
+        run: |
+          cosign sign --yes ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
