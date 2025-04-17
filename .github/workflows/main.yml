@@ -169,11 +169,11 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@v3.8.1
       
-      - name: Sign Docker image with private key
+      - name: Write cosign key
         run: |
-          cosign sign --yes --key env://COSIGN_PRIVATE_KEY ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
-        env:
-          COSIGN_PRIVATE_KEY: ${{ secrets.PRIVATE_KEY_PEM }}
+          echo "${{ secrets.PRIVATE_KEY_PEM }}" > cosign.key
+      - name: Sign image
+        run: cosign sign --key cosign.key ...
           
       - name: Sign Docker image with GitHub OIDC Token
         run: |
