@@ -64,8 +64,10 @@ jobs:
         run: |
           echo "${{ secrets.PRIVATE_KEY_PEM }}" > cosign.key
       - name: Sign image
+        env:
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
         run: |
-          echo "${{ secrets.COSIGN_PASSWORD }}" | cosign sign --key cosign.key --key-pass --yes ...
+          cosign sign --key cosign.key ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
           
       - name: Sign Docker image with GitHub OIDC Token
         run: |
