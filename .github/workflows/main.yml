@@ -144,21 +144,17 @@ jobs:
           docker push ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
 
       # ——— Cosign signing steps ———
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3.8.1
+
       - name: Write Cosign private key
         run: |
-          # restore real newlines if your secret has "\n" literals
-          echo "${{ secrets.PRIVATE_KEY_PEM }}" | sed 's/\\n/\/g' > import-cosign.key
-          chmod 600 import-cosign.key
-      
-      - name: Sign image with Cosign (using --passphrase-file)
-        env:
-          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+          echo "${{ secrets.PRIVATE_KEY_PEM }}" > import-cosign.key
+
+      - name: Sign image with Cosign
         run: |
-          # write exactly the passphrase, no newline
-          printf '%s' "$COSIGN_PASSWORD" > cosign.pass
-          # now use --passphrase-file to avoid any interactive prompt
-          cosign sign \
-            --key import-cosign.key \
-            --passphrase-file cosign.pass \
-            --yes \
-            ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
+           echo ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
+           cosign sign \
+                --key import-cosign.key \
+                --yes \
+                ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
