@@ -152,9 +152,10 @@ jobs:
           echo "${{ secrets.PRIVATE_KEY_PEM }}" > import-cosign.key
 
       - name: Sign image with Cosign
+        env:
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
         run: |
-           echo ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
-           cosign sign \
-                --key import-cosign.key \
-                --yes \
-                ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
+          cosign sign \
+            --key import-cosign.key \
+            --yes \
+            ghcr.io/${{ env.REPO_OWNER }}/archon-demo-node-app:latest
